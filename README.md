@@ -10,5 +10,17 @@ Everything else written in standard Rust
 - Multi Process Wokers (currently in single machine)  
 
 ### Usage
+- Working on it
 
-
+### Todo  
+-Coordinator Shutdown after all task complete
+-Create Test
+  -Correct Output
+  -Correct Indexing
+  -Map Parallelism
+  -Reduce Parallelism
+  -Job Count
+  -Early Exit
+  -Crash
+  -Race Condition
+-Remove Redundant Mutex

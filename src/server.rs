@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::{thread, time::Duration};
 use std::env;
 use std::fs;
+use std::process;
 
 use rpc::coordinator_server::{Coordinator, CoordinatorServer};
 use rpc::{RequestTaskArg, RequestTaskReply, CompleteTaskArg, CompleteTaskReply};
@@ -19,6 +20,7 @@ pub struct Task {
 }
 
 pub struct MyCoordinator {
+    flag: Arc<Mutex<i32>>,
     shared: Arc<Shared>,
 }
 struct Shared {
@@ -101,6 +103,7 @@ impl Coordinator for MyCoordinator {
             }
         }
         let mut reply = CompleteTaskReply {a: "1".to_string()};
+        *self.flag.lock().unwrap() = self.done() as i32;
         Ok(Response::new(reply))
     }
 }
@@ -117,7 +120,9 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     let foo = Arc::new(Shared {map_left: Mutex::new(0), reduce_left: Mutex::new(0), map_tasks: Mutex::new(vec![]), reduce_tasks: Mutex::new(vec![]),
     map_total: Mutex::new(0), reduce_total: Mutex::new(0)});
-    let mut coordinator : MyCoordinator = MyCoordinator {shared: foo};
+    let mut coordinator : MyCoordinator = MyCoordinator {shared: foo, flag: Arc::new(Mutex::new(0))};
+
+    let (shutdown_trigger, shutdown_signal1) = triggered::trigger();
 
     *coordinator.shared.map_left.lock().unwrap() = all_files.len() as i32;
     *coordinator.shared.reduce_left.lock().unwrap() = n_reduce;
@@ -135,26 +140,35 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         coordinator.shared.reduce_tasks.lock().unwrap().push(t);
     }
 
+    //let flag = Arc::new(Mutex::new(12));
+    let flag = coordinator.flag.clone();
 
     let addr = "[::1]:50051".parse().unwrap();
     tokio::spawn(async move {
         Server::builder()
             .add_service(CoordinatorServer::new(coordinator))
-            .serve(addr)
-            //.serve_with_shutdown(addr, shutdown_signal1)
+            //.serve(addr)
+            .serve_with_shutdown(addr, shutdown_signal1)
             .await.unwrap();
     });
-
+    
+    loop {
+        //I hope No other Human Eyes lay open this 
+        for i in 0..1 {
+            thread::sleep(Duration::from_millis(1000));
+            let val = flag.lock().unwrap();
+            println!("T11 {}", val);
+            if *val == 1 {
+                //shutdown_trigger.trigger();
+                process::exit(1);
+            }
+        }
+    }
     Ok(())
 }
 
 
 #[tokio::main]
 async fn main() {
-    let (shutdown_trigger, shutdown_signal1) = triggered::trigger();
     run().await;
-    loop {
-        thread::sleep(Duration::from_millis(1000));
-        println!("Working Beep Boop");
-    }
 }
