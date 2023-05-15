@@ -1,0 +1,29 @@
+syntax = "proto3";
+package rpc;
+
+service Coordinator {
+    rpc SayHello (RequestTaskArg) returns (RequestTaskReply);
+    rpc CompletedTask (CompleteTaskArg) returns (CompleteTaskReply);
+}
+
+message RequestTaskArg {
+   string name = 1;
+}
+
+message RequestTaskReply {
+    string task_type = 1;
+    string file_names = 2;
+    string n_reduce = 3;
+    string n_map = 4;
+    string task_id = 5;
+}
+
+message CompleteTaskArg {
+    string task_type = 1;
+    string task_id = 2;
+    string file_names = 3;
+}
+
+message CompleteTaskReply {
+    string a  = 1;
+}
