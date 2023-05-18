@@ -1,9 +1,7 @@
 use tonic::{transport::Server, Request, Response, Status};
 use std::sync::{Arc, Mutex};
-use std::collections::HashMap;
 use std::{thread, time::Duration};
 use std::env;
-use std::fs;
 use std::process;
 
 use rpc::coordinator_server::{Coordinator, CoordinatorServer};
@@ -15,7 +13,7 @@ pub mod rpc {
 
 pub struct Task {
     file_name: String,
-    t_type: i32, //0 invalid, 1 map taks, 2 reduce task
+    //t_type: i32, //0 invalid, 1 map taks, 2 reduce task
     status: i32, //0 unassigned, 1 inprogress, 2 completed
 }
 
@@ -53,34 +51,29 @@ impl Coordinator for MyCoordinator {
         //Try to find a map task to assign
         //TODO replace this with a more efficient search 
         //TODO Try to get rid of all Mutex and replace with 1 Mutex if possible
-        let mut assigned: bool = false;
         let mut reply = RequestTaskReply::default();
             
         for i in 0..*self.shared.map_total.lock().unwrap() {
-            if self.shared.map_tasks.lock().unwrap()[i as usize].status == 0 && assigned == false {
+            if self.shared.map_tasks.lock().unwrap()[i as usize].status == 0 {
                 reply.task_type = "1".to_string();
                 reply.file_names = self.shared.map_tasks.lock().unwrap()[i as usize].file_name.clone();
                 reply.n_reduce = self.shared.reduce_total.lock().unwrap().to_string();
                 reply.task_id = i.to_string();
-                assigned = true;
                 return Ok(Response::new(reply));
             }
         }
 
         for i in 0..*self.shared.reduce_total.lock().unwrap() {
-            if self.shared.reduce_tasks.lock().unwrap()[i as usize].status == 0 && assigned == false {
+            if self.shared.reduce_tasks.lock().unwrap()[i as usize].status == 0 {
                 reply.task_type = "2".to_string();
                 reply.file_names = self.shared.reduce_tasks.lock().unwrap()[i as usize].file_name.clone();
                 reply.task_id = i.to_string();
                 reply.n_map = self.shared.map_total.lock().unwrap().to_string();
-                assigned = true;
                 return Ok(Response::new(reply));
             }
         }
 
-        if assigned == false {
-            reply.task_type = "-1".to_string();
-        }
+        reply.task_type = "-1".to_string();
 
         return Ok(Response::new(reply));
     }
@@ -102,7 +95,7 @@ impl Coordinator for MyCoordinator {
                 *self.shared.reduce_left.lock().unwrap() -= 1;
             }
         }
-        let mut reply = CompleteTaskReply {a: "1".to_string()};
+        let reply = CompleteTaskReply {a: "1".to_string()};
         *self.flag.lock().unwrap() = self.done() as i32;
         Ok(Response::new(reply))
     }
@@ -120,9 +113,9 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     let foo = Arc::new(Shared {map_left: Mutex::new(0), reduce_left: Mutex::new(0), map_tasks: Mutex::new(vec![]), reduce_tasks: Mutex::new(vec![]),
     map_total: Mutex::new(0), reduce_total: Mutex::new(0)});
-    let mut coordinator : MyCoordinator = MyCoordinator {shared: foo, flag: Arc::new(Mutex::new(0))};
+    let coordinator : MyCoordinator = MyCoordinator {shared: foo, flag: Arc::new(Mutex::new(0))};
 
-    let (shutdown_trigger, shutdown_signal1) = triggered::trigger();
+    let (_shutdown_trigger, shutdown_signal1) = triggered::trigger();
 
     *coordinator.shared.map_left.lock().unwrap() = all_files.len() as i32;
     *coordinator.shared.reduce_left.lock().unwrap() = n_reduce;
@@ -130,13 +123,13 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     *coordinator.shared.reduce_total.lock().unwrap() = n_reduce;
 
     for i in 0..all_files.len() {
-        let t: Task = Task {file_name: all_files[i].clone(), status: 0, t_type: 1};
+        let t: Task = Task {file_name: all_files[i].clone(), status: 0};
         println!("file:{}", t.file_name);
         coordinator.shared.map_tasks.lock().unwrap().push(t);
     }
 
-    for i in 0..n_reduce {
-        let t: Task = Task {file_name: "".to_string(), status: 0, t_type: 2};
+    for _i in 0..n_reduce {
+        let t: Task = Task {file_name: "".to_string(), status: 0};
         coordinator.shared.reduce_tasks.lock().unwrap().push(t);
     }
 
@@ -154,21 +147,21 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     
     loop {
         //I hope No other Human Eyes lay open this 
-        for i in 0..1 {
+        for _i in 0..1 {
             thread::sleep(Duration::from_millis(1000));
             let val = flag.lock().unwrap();
             println!("T11 {}", val);
             if *val == 1 {
                 //shutdown_trigger.trigger();
+                println!("All Tasks Completed");
                 process::exit(1);
             }
         }
     }
-    Ok(())
 }
 
 
 #[tokio::main]
 async fn main() {
-    run().await;
+    run().await.unwrap();
 }

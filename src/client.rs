@@ -7,9 +7,9 @@ use std::fs;
 use std::fs::File;
 use std::io::BufWriter;
 use std::io::Write;
-use serde::{Serialize, Serializer, Deserialize};
+use serde::{Serialize, Deserialize};
 use std::fs::OpenOptions;
-use crate::helper::{map_reduce, KeyValue};
+use crate::helper::{MapReduce, KeyValue};
 
 
 pub fn ihash(key: &String) -> i32 {
@@ -20,7 +20,7 @@ pub fn ihash(key: &String) -> i32 {
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct obj {
+pub struct Obj {
     all: Vec<KeyValue>
 }
 
@@ -56,7 +56,7 @@ async fn completed_task(task_type: i32, task_id: i32, file_name: String) -> Comp
     return response.into_inner();
 }
 
-async fn process_map(obj: &dyn map_reduce, file_names: &String, n_reduce: i32, t_id: i32) {
+async fn process_map(obj: &dyn MapReduce, file_names: &String, n_reduce: i32, t_id: i32) {
     //Typically Only one but to make it symmetric to Reduce
     println!("Process Map {} {}", file_names, t_id);
     let files: Vec<String> = split_string(file_names);
@@ -67,15 +67,14 @@ async fn process_map(obj: &dyn map_reduce, file_names: &String, n_reduce: i32, t
         kva.append(&mut obj.map(file, &contents));
     }
     let mut open_files: Vec<BufWriter<File>> = vec![];
-    let mut file_names: String = "".to_string();
-    let mut json_obs: Vec<obj> = vec![];
+    let file_names: String = "".to_string();
+    let mut json_obs: Vec<Obj> = vec![];
     for i in 0..n_reduce {
-        let mut file = File::create(format!("mr-{}-{}", t_id, i)).unwrap();
         let f = format!("mr-{}-{}", t_id, i);
         let file = File::create(f).unwrap();
         let writer = BufWriter::new(file);
         open_files.push(writer);
-        json_obs.push(obj {all: vec![]});
+        json_obs.push(Obj {all: vec![]});
     }
     for pair in kva {
         json_obs[(ihash(&pair.key)%n_reduce) as usize].all.push(pair);
@@ -89,7 +88,7 @@ async fn process_map(obj: &dyn map_reduce, file_names: &String, n_reduce: i32, t
     completed_task(1, t_id, file_names).await;  
 }
 
-async fn process_reduce(obj: &dyn map_reduce, file_names: &String, t_id: i32, n_map: i32) {
+async fn process_reduce(obj: &dyn MapReduce, _file_names: &String, t_id: i32, n_map: i32) {
     //TODO support a stream of file_names
     //Currently I use a special convention of filenames depedent on n_map and t_id
     
@@ -98,12 +97,12 @@ async fn process_reduce(obj: &dyn map_reduce, file_names: &String, t_id: i32, n_
         let f = format!("mr-{}-{}", i, t_id);
         let data = fs::read_to_string(f).expect("Unable to read file");
         //println!("{}", data);
-        let mut res: obj = serde_json::from_str(&data).unwrap();
+        let mut res: Obj = serde_json::from_str(&data).unwrap();
         kva.append(&mut res.all);
     }
     let f = format!("mr-out-{}", t_id);
-    let mut file = OpenOptions::new()
-        .create(true)
+    let file = OpenOptions::new()
+        .create_new(true)
         .append(true)
         .open(f).unwrap();
     let mut writer = BufWriter::new(file);
@@ -126,7 +125,7 @@ async fn process_reduce(obj: &dyn map_reduce, file_names: &String, t_id: i32, n_
     completed_task(2, t_id, "".to_string()).await;  
 }
 
-pub async fn run(obj: &dyn map_reduce) {
+pub async fn run(obj: &dyn MapReduce) {
     loop {
         let res = request_task().await;
         if res.task_type == "1".to_string() {
@@ -142,8 +141,4 @@ pub async fn run(obj: &dyn map_reduce) {
         }
         thread::sleep(Duration::from_millis(1000));
     }
-}
-
-#[tokio::main]
-async fn main() {
 }

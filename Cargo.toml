@@ -18,8 +18,8 @@ name = "sequential"
 path = "src/main.rs"
 
 [[bin]]
-name = "test"
-path = "src/test.rs"
+name = "worker"
+path = "src/run.rs"
 
 [dependencies]
 futures = "0.3"

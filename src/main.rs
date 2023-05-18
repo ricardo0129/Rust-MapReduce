@@ -1,5 +1,7 @@
-mod helper;
-use crate::helper::{KeyValue, MyTrait};
+pub mod helper;
+pub mod map_reduce;
+use crate::map_reduce::MyImpl;
+use crate::helper::MapReduce as other_map_reduce;
 use std::env;
 use std::fs;
 use std::fs::OpenOptions;
@@ -9,16 +11,17 @@ use std::io::BufWriter;
 fn main() {
     //A sequential Map Reduce for Testing the distributed Version
     //Currently The Map Reduce implementation is reciding in helper.rs
+    let obj: &dyn other_map_reduce = &MyImpl {};
     let mut kva: Vec<helper::KeyValue> = vec![];
     let mut args: Vec<String> = env::args().collect();
     args.remove(0);
     for file in args.iter() {
         let contents = fs::read_to_string(file)
             .expect("error opening file");
-        kva.append(&mut helper::map(file, &contents));
+        kva.append(&mut obj.map(file, &contents));
     }
     let f = "mr-out".to_string();
-    let mut file = OpenOptions::new()
+    let file = OpenOptions::new()
         .create(true)
         .append(true)
         .open(f).unwrap();
@@ -32,7 +35,7 @@ fn main() {
             values.push(&kva[j].value);
             j += 1;
         }
-        let value = helper::reduce(&kva[j-1].key, values);
+        let value = obj.reduce(&kva[j-1].key, values);
         let data = format!("{} {}", &kva[j-1].key, value);
         writeln!(writer, "{}", data).unwrap();
         i = j;
